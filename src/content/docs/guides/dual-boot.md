@@ -20,13 +20,11 @@ We need to shrink an existing partition to make room for AxOS.
 
 ### Windows
 
-1. Press `Win + X` → choose **Disk Management**
-   *or*
-   Press `Win + R`, type `diskmgmt.msc`, and hit Enter.
+1. Right click on the Windows Icon -> choose Disk management from the menu.
 2. In the Disk Management window:
    * Right-click on a partition with enough free space (e.g. your D: drive)
    * Click **"Shrink Volume"**
-   * Enter how much you want to shrink (in MB). For example, `50000` for 50 GB
+   * Enter how much you want to shrink (in MB). For example, `50000` for 50 GB (Note: This is the minimum required space to install AxOS. You can increase it as much as you like.)
    * Click **"Shrink"**
 
 This will create **unallocated space** which we’ll use to install AxOS.
@@ -52,11 +50,22 @@ This will create **unallocated space** which we’ll use to install AxOS.
 
 
 ## Step 3: Verify Free Space in AxOS
+> **Note:** Take note of your disk’s name. It could be something like:  
+> - `/dev/sda`  
+> - `/dev/nvme0n1`  
+>
+> We’ll use this name in the next steps.  
+> If you’re not sure which disk is which:  
+> 1. Open a terminal (`Windows key + Enter`)  
+> 2. Type `lsblk` and press Enter  
+> 3. Look for your main disk (`/dev/sda` or `/dev/nvme0n1`)  
+>
+>  **Important:** Do **not** modify `/dev/sdb` or your USB drive. Only partition your main disk.  
 
-Once inside the live AxOS, open the terminal (`Win + Enter`) and run:
+Once inside the live AxOS, open the terminal (`Win (Mod) + Enter (Return)`) and run:
 
 ```bash
-sudo parted -l
+sudo cfdisk /dev/<your disk. i.e - /dev/sda or /dev/nvme0n1>
 ```
 
 This will list all available disks and their partitions.
@@ -64,7 +73,7 @@ This will list all available disks and their partitions.
 Look for something like:
 
 ```
-Unallocated space: 50GB
+Free Space with Size type 50GB
 ```
 
 Or run:
@@ -73,74 +82,123 @@ Or run:
 sudo parted -l | grep "Unallocated"
 ```
 
-> **Note:** Take note of your disk’s name — it could be something like:
->
-> * `/dev/sda`
-> * `/dev/nvme0n1`
->
-> We’ll use that name in the next step.
 
+## Step 4: Create Partitions with `cfdisk`
 
-## Step 4: Create Partitions with `gdisk`
+Why `cfdisk`? This is because `cfdisk` is the lightest and the most beginner-friendly tool to manually partition your disks , you can alternatively use `gparted`, `parted`, etc.
 
-We’ll now use `gdisk` to manually create two partitions:
+We’ll create **three partitions**:
 
-* One for the **EFI System** (`/boot/efi`)
-* One for the **Linux Root** (`/`)
+1. **EFI System** (`/boot/efi`) - required for UEFI boot
+2. **Linux Root** (`/`) - where AxOS will be installed
+3. **Swap** (Optional) - used as extra memory when RAM is full (recommended size = 1–2× your RAM)
 
-Replace `yourdiskname` below with your actual disk name (e.g. `/dev/sda` or `/dev/nvme0n1`).
+First, open `cfdisk` (replace `yourdiskname` with your disk, e.g. `/dev/sda` or `/dev/nvme0n1`):
 
 ```bash
-sudo gdisk /dev/yourdiskname
+sudo cfdisk /dev/yourdiskname
 ```
 
-### Inside `gdisk`:
+---
 
-1. Press `n` to create a **new partition**
-2. Press `Enter` to accept default partition number
-3. Press `Enter` to accept default first sector
-4. Type `+512M` → this creates a 512MB partition
-5. Type `EF00` → this sets it as an **EFI System** partition
+### Inside `cfdisk`
 
-EFI partition done!
+Use the **arrow keys** to move and **Enter** to confirm.
 
+#### 1. EFI Partition
 
-### Create the Root Partition (`/`):
+1. Select **Free space** → choose **New**.
+2. Enter `512M` for size.
+3. Highlight the new partition → choose **Type** → select **EFI System**.
 
-1. Press `n` again
-2. Press `Enter` for all prompts (partition number, first/last sector, partition type)
-3. Type `w` and press `Enter` to **write changes**
+EFI partition ready.
 
-> Confirm with `y` if asked.
+---
 
-We’ve now created two partitions.
+#### 2. Root Partition (`/`)
 
-> ⚠️ The **partition names** depend on your disk:
->
-> * If your disk is `/dev/sda`, partitions will be `/dev/sda1`, `/dev/sda2`, etc.
-> * If your disk is `/dev/nvme0n1`, partitions will be `/dev/nvme0n1p1`, `/dev/nvme0n1p2`, etc.
->   *(Note the **"p"** before the number of partition)*
+1. Select remaining free space → choose **New**.
+2. Enter a size (e.g. `50G`) or use all remaining space except what you want for Swap.
+3. Highlight the new partition -> choose **Type** -> select **Linux filesystem**.
+
+Root partition ready.
+
+---
+
+#### 3. Swap Partition (Optional)
+
+1. Select leftover free space → choose **New**.
+2. Enter the desired size (e.g. `8G`).
+3. Highlight it -> choose **Type** -> select **Linux swap**.
+
+Swap partition ready.
+
+---
+
+### Save and Exit
+
+1. Choose **Write** → type `yes` to confirm.
+2. Then select **Quit**.
+
+---
+
+### Partition Naming
+
+The partition names depend on your disk type:
+
+* **SATA disks:** `/dev/sda1`, `/dev/sda2`, `/dev/sda3`
+* **NVMe disks:** `/dev/nvme0n1p1`, `/dev/nvme0n1p2`, `/dev/nvme0n1p3`
+  *(Notice the **“p”** before the number on NVMe.)*
+
+You now have:
+
+* `/dev/...1` -> EFI (512 MB or more)
+* `/dev/...2` -> Root (Linux `/`)
+* `/dev/...3` -> Swap (Optional)
 
 
 ## Step 5: Mount the Partitions
 
-### Mount the Root Partition (Linux filesystem):
+We’ll now mount and prepare the partitions for installation.
+Adjust disk and partition names as needed (`/dev/sdaX` or `/dev/nvme0n1pX`).
+
+---
+
+### 1. Mount the Root Partition (Linux filesystem)
 
 ```bash
 sudo mount /dev/nvme0n1p2 /mnt
 ```
 
-### Create and Mount EFI Directory:
+---
+
+### 2. Create and Mount the EFI Directory
 
 ```bash
 sudo mkdir -p /mnt/boot/efi
 sudo mount /dev/nvme0n1p1 /mnt/boot/efi
 ```
 
-> **Adjust disk and partition names and numbers as needed.**
+---
+
+### 3. Enable the Swap Partition (Optional)
+
+First, format it as swap:
+
+```bash
+sudo mkswap /dev/nvme0n1p3
+```
+
+Then activate it:
+
+```bash
+sudo swapon /dev/nvme0n1p3
+```
+
 
 Now we’re ready to launch the installer.
 
+---
 
 ## Step 6: Launch the AxOS Installer
 
@@ -164,6 +222,7 @@ Now we’re ready to launch the installer.
 5. Once installation finishes, reboot
 
 > **Adjust disk and partition names and numbers as needed.**
+
 
 ## Step 8: Configure GRUB to Detect Windows
 
